@@ -1,4 +1,4 @@
-﻿Imports System.Data.SqlClient
+﻿Imports Microsoft.Data.SqlClient
 
 Public Class OrderManagement
 
@@ -56,11 +56,20 @@ Public Class OrderManagement
     End Sub
 
     Private Sub getIcing()
+        If cakeComboBx.SelectedValue Is Nothing Then Exit Sub
+
         Using conn As New SqlConnection(connString)
             Try
                 conn.Open()
-                Dim query As String = "SELECT IcingID, IcingType, Price FROM Icing"
+                Dim query As String = "
+                SELECT i.IcingID, i.IcingType, i.Price
+                FROM Icing i
+                INNER JOIN CakeIcing ci ON i.IcingID = ci.IcingID
+                WHERE ci.CakeID = @CakeID"
+
                 Dim da As New SqlDataAdapter(query, conn)
+                da.SelectCommand.Parameters.AddWithValue("@CakeID", CInt(cakeComboBx.SelectedValue))
+
                 Dim dt As New DataTable()
                 da.Fill(dt)
 
@@ -108,17 +117,42 @@ Public Class OrderManagement
         Dim icing As DataRowView = CType(icingComboBx.SelectedItem, DataRowView)
         Dim topping As DataRowView = CType(tppngsComboBx.SelectedItem, DataRowView)
 
+        Dim cakeID As Integer = CInt(cake("CakeID"))
+        Dim cakeType As String = cake("CakeType").ToString()
         Dim cakePrice As Decimal = CDec(cake("Price"))
+
+        Dim icingType As String = icing("IcingType").ToString()
         Dim icingPrice As Decimal = CDec(icing("Price"))
+
+        Dim toppingType As String = topping("ToppingType").ToString()
         Dim toppingPrice As Decimal = CDec(topping("Price"))
 
         Dim qty As Integer = Convert.ToInt32(qtyNumBar.Value)
 
-        orderGrid.Rows.Add(cake("CakeID"),
-                           cake("CakeType"), cakePrice.ToString("F2"),
-                           icing("IcingType"), icingPrice.ToString("F2"),
-                           topping("ToppingType"), toppingPrice.ToString("F2"),
-                           qty)
+        ' 🔍 Check if this combination already exists
+        Dim found As Boolean = False
+        For Each row As DataGridViewRow In orderGrid.Rows
+            If Not row.IsNewRow Then
+                If CInt(row.Cells("CakeID").Value) = cakeID AndAlso
+                   row.Cells("Icing").Value.ToString() = icingType AndAlso
+                   row.Cells("Topping").Value.ToString() = toppingType Then
+
+                    ' ✅ Update existing row Qty
+                    row.Cells("Qty").Value = Convert.ToInt32(row.Cells("Qty").Value) + qty
+                    found = True
+                    Exit For
+                End If
+            End If
+        Next
+
+        ' ➕ If not found, add new row
+        If Not found Then
+            orderGrid.Rows.Add(cakeID,
+                               cakeType, cakePrice.ToString("F2"),
+                               icingType, icingPrice.ToString("F2"),
+                               toppingType, toppingPrice.ToString("F2"),
+                               qty)
+        End If
 
         updateTotals()
     End Sub
@@ -156,6 +190,18 @@ Public Class OrderManagement
     End Sub
 
     Private Sub placeOrdsBttn_Click(sender As Object, e As EventArgs) Handles placeOrdsBttn.Click
+
+        Dim areYooSure As DialogResult
+        areYooSure = MessageBox.Show("Place Order" & vbCrLf &
+                                    "Final Nani?",
+                                     "Confirm Order",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Question)
+
+        If areYooSure = DialogResult.No Then
+            Exit Sub
+        End If
+
         Using conn As New SqlConnection(connString)
             conn.Open()
             Dim tran As SqlTransaction = conn.BeginTransaction()
@@ -181,15 +227,21 @@ Public Class OrderManagement
 
                     Dim insertDetail As String =
                     "INSERT INTO OrderDetails (OrderID, CakeID, Quantity, Subtotal)
-                     VALUES (@OrderID, @CakeID, @Quantity, @Subtotal)"
+                        VALUES (@OrderID, @CakeID, @Quantity, @Subtotal)"
 
                     Using cmdDetail As New SqlCommand(insertDetail, conn, tran)
+                        Dim qty As Integer = Convert.ToInt32(row.Cells("Qty").Value)
+                        Dim cakePrice As Decimal = Convert.ToDecimal(row.Cells("CakePrc").Value)
+                        Dim icingPrice As Decimal = Convert.ToDecimal(row.Cells("IcingPrc").Value)
+                        Dim toppingPrice As Decimal = Convert.ToDecimal(row.Cells("ToppingPrc").Value)
+
+                        Dim subtotal As Decimal = (cakePrice + icingPrice + toppingPrice) * qty
+
                         cmdDetail.Parameters.AddWithValue("@OrderID", orderId)
                         cmdDetail.Parameters.AddWithValue("@CakeID", Convert.ToInt32(row.Cells("CakeID").Value))
-                        cmdDetail.Parameters.AddWithValue("@Quantity", Convert.ToInt32(row.Cells("Qty").Value))
-                        cmdDetail.Parameters.AddWithValue("@Subtotal", Convert.ToDecimal(row.Cells("CakePrc").Value) +
-                                                             Convert.ToDecimal(row.Cells("IcingPrc").Value) +
-                                                             Convert.ToDecimal(row.Cells("ToppingPrc").Value))
+                        cmdDetail.Parameters.AddWithValue("@Quantity", qty)
+                        cmdDetail.Parameters.AddWithValue("@Subtotal", subtotal) ' ✅ fixed
+
                         cmdDetail.ExecuteNonQuery()
                     End Using
                 Next
@@ -245,5 +297,29 @@ Public Class OrderManagement
                 MessageBox.Show("Error placing order: " & ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
             End Try
         End Using
+        printResibo()
+    End Sub
+
+    Private Sub cakeComboBx_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cakeComboBx.SelectedIndexChanged
+        getIcing()
+    End Sub
+
+    Private Sub printResibo()
+        Dim print As String
+        print = "Sweet Delights" & vbCrLf
+        print &= "------------------------" & vbCrLf
+        print &= "Customer: " & CstmrComboBx.Text & vbCrLf
+        print &= "Order Date: " & Date.Now.ToString("g") & vbCrLf
+        print &= "------------------------" & vbCrLf
+        print &= "Items:" & vbCrLf
+        For Each row As DataGridViewRow In orderGrid.Rows
+            If Not row.IsNewRow Then
+                print &= $"{row.Cells("Qty").Value} x {row.Cells("Cake").Value} ({row.Cells("Icing").Value}, {row.Cells("Topping").Value}) - ₱{(Convert.ToDecimal(row.Cells("CakePrc").Value) + Convert.ToDecimal(row.Cells("IcingPrc").Value) + Convert.ToDecimal(row.Cells("ToppingPrc").Value)) * Convert.ToInt32(row.Cells("Qty").Value):F2}" & vbCrLf
+            End If
+        Next
+        print &= "------------------------" & vbCrLf
+        print &= $"Total: ₱{overAllTxt.Text}" & vbCrLf
+        print &= "Thank you for your order!" & vbCrLf
+        MessageBox.Show(print, "Receipt")
     End Sub
 End Class

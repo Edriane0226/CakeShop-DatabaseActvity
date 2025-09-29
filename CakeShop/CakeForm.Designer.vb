@@ -52,9 +52,9 @@ Partial Class Cake
         Label1.Font = New Font("Segoe UI", 16.2F, FontStyle.Bold, GraphicsUnit.Point, CByte(0))
         Label1.Location = New Point(12, 9)
         Label1.Name = "Label1"
-        Label1.Size = New Size(97, 38)
+        Label1.Size = New Size(80, 38)
         Label1.TabIndex = 0
-        Label1.Text = "Cake's"
+        Label1.Text = "Cake"
         ' 
         ' cakeTypeLabel
         ' 

@@ -86,8 +86,13 @@ Public Class OrderManagement
         Using conn As New SqlConnection(connString)
             Try
                 conn.Open()
-                Dim query As String = "SELECT ToppingID, ToppingType, Price FROM Topping"
+                Dim query As String = "
+                SELECT t.ToppingID, t.ToppingType, t.Price
+                FROM Topping t
+                INNER JOIN CakeTopping ct ON t.ToppingID = ct.ToppingID
+                WHERE ct.CakeID = @CakeID"
                 Dim da As New SqlDataAdapter(query, conn)
+                da.SelectCommand.Parameters.AddWithValue("@CakeID", CInt(cakeComboBx.SelectedValue))
                 Dim dt As New DataTable()
                 da.Fill(dt)
 
@@ -129,7 +134,6 @@ Public Class OrderManagement
 
         Dim qty As Integer = Convert.ToInt32(qtyNumBar.Value)
 
-        ' 🔍 Check if this combination already exists
         Dim found As Boolean = False
         For Each row As DataGridViewRow In orderGrid.Rows
             If Not row.IsNewRow Then
@@ -137,7 +141,6 @@ Public Class OrderManagement
                    row.Cells("Icing").Value.ToString() = icingType AndAlso
                    row.Cells("Topping").Value.ToString() = toppingType Then
 
-                    ' ✅ Update existing row Qty
                     row.Cells("Qty").Value = Convert.ToInt32(row.Cells("Qty").Value) + qty
                     found = True
                     Exit For
@@ -145,7 +148,6 @@ Public Class OrderManagement
             End If
         Next
 
-        ' ➕ If not found, add new row
         If Not found Then
             orderGrid.Rows.Add(cakeID,
                                cakeType, cakePrice.ToString("F2"),
@@ -302,6 +304,7 @@ Public Class OrderManagement
 
     Private Sub cakeComboBx_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cakeComboBx.SelectedIndexChanged
         getIcing()
+        getToppings()
     End Sub
 
     Private Sub printResibo()
